@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const qrcode = require('qrcode-terminal');
+const qrcode = require('qrcode'); // <-- For image QR
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 
@@ -9,10 +9,30 @@ const PORT = process.env.PORT || 3000;
 
 let sock = null;
 let isConnected = false;
+let currentQR = null; // 🆕 Store the latest QR for web UI
 
-app.use(bodyParser.json()); // Enable JSON body parsing
+app.use(bodyParser.json());
 
-// Function to connect to WhatsApp
+// Serve simple HTML QR UI
+app.get('/qr', async (req, res) => {
+  if (!currentQR) {
+    return res.send('<h2>🤖 No QR Code available. Please wait or refresh.</h2>');
+  }
+
+  try {
+    const qrImage = await qrcode.toDataURL(currentQR);
+    res.send(`
+      <div style="text-align:center;">
+        <h2>📲 Scan this QR Code to login WhatsApp</h2>
+        <img src="${qrImage}" />
+      </div>
+    `);
+  } catch (err) {
+    res.status(500).send('Failed to generate QR');
+  }
+});
+
+// WhatsApp connect function
 async function connectToWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState('baileys-auth');
 
@@ -24,8 +44,8 @@ async function connectToWhatsApp() {
     const { connection, qr, lastDisconnect } = update;
 
     if (qr) {
-      console.log('📲 Scan this QR Code to log in:');
-      qrcode.generate(qr, { small: true });
+      currentQR = qr; // 🆕 Save for web route
+      console.log('📲 Scan QR shown at: http://localhost:' + PORT + '/qr');
     }
 
     if (connection === 'close') {
@@ -35,11 +55,12 @@ async function connectToWhatsApp() {
       if (shouldReconnect) {
         connectToWhatsApp();
       } else {
-        console.log('🔒 Session expired. Please restart to scan QR again.');
+        console.log('🔒 Session expired. Please restart.');
       }
     }
 
     if (connection === 'open') {
+      currentQR = null; // 🧹 Clear QR once connected
       isConnected = true;
       console.log('✅ WhatsApp connected!');
     }
@@ -48,12 +69,12 @@ async function connectToWhatsApp() {
   sock.ev.on('creds.update', saveCreds);
 }
 
-// Route: Check WhatsApp connection status
+// API to check status
 app.get('/whatsapp-status', (req, res) => {
   res.json({ status: isConnected ? 'connected' : 'disconnected' });
 });
 
-// Route: Send a WhatsApp message
+// Send WhatsApp message
 app.post('/send-message', async (req, res) => {
   if (!isConnected) {
     return res.status(503).json({ status: 'disconnected', error: 'WhatsApp is not connected' });
@@ -76,8 +97,8 @@ app.post('/send-message', async (req, res) => {
   }
 });
 
-// Start server and connect to WhatsApp
+// Start the app
 app.listen(PORT, () => {
-  console.log(`🟢 Server running on http://localhost:${PORT}`);
+  console.log(`🟢 Server running at http://localhost:${PORT}`);
   connectToWhatsApp();
 });
