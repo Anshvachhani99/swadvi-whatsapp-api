@@ -97,6 +97,62 @@ app.post('/send-message', async (req, res) => {
   }
 });
 
+// Route to serve HTML form to send message
+app.get('/send', (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Send WhatsApp Message</title>
+        <style>
+          body { font-family: Arial; padding: 20px; }
+          input, textarea { width: 300px; padding: 10px; margin: 10px 0; }
+          button { padding: 10px 20px; }
+        </style>
+      </head>
+      <body>
+        <h2>📤 Send WhatsApp Message</h2>
+        <form method="POST" action="/send" onsubmit="return sendMessage(event)">
+          <label>Mobile Number (with country code):</label><br />
+          <input type="text" id="number" placeholder="91XXXXXXXXXX" required /><br />
+          <label>Message:</label><br />
+          <textarea id="message" rows="4" placeholder="Type your message..." required></textarea><br />
+          <button type="submit">Send</button>
+        </form>
+        <div id="response" style="margin-top: 20px;"></div>
+
+        <script>
+          async function sendMessage(event) {
+            event.preventDefault();
+            const number = document.getElementById('number').value;
+            const message = document.getElementById('message').value;
+
+            const responseDiv = document.getElementById('response');
+
+            try {
+              const res = await fetch('/send-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ number, message })
+              });
+
+              const data = await res.json();
+
+              if (res.ok) {
+                responseDiv.innerHTML = '<span style="color: green;">✅ Message sent! ID: ' + data.id + '</span>';
+              } else {
+                responseDiv.innerHTML = '<span style="color: red;">❌ Error: ' + (data.error || 'Failed') + '</span>';
+              }
+            } catch (err) {
+              responseDiv.innerHTML = '<span style="color: red;">❌ Request failed</span>';
+            }
+          }
+        </script>
+      </body>
+    </html>
+  `);
+});
+
+
 // Start the app
 app.listen(PORT, () => {
   console.log(`🟢 Server running at http://localhost:${PORT}`);
